@@ -1,19 +1,19 @@
-// Entry point. The full wallet UI is built incrementally by the
-// consensus-rnd codex-refactor-loop via design issues.
-import { describeNetwork } from './lib/wallet.js'
+import './style.css'
+import QRCode from 'qrcode'
+import * as keys from './lib/keys.js'
+import * as storage from './lib/storage.js'
+import { createMempoolTestnetClient } from './lib/client.js'
+import * as tx from './lib/tx.js'
+import { mountWalletApp } from './ui/wallet-app.js'
 
-function render() {
-  const main = document.getElementById('main')
-  if (!main) return
-  main.innerHTML = `
-    <section>
-      <h2>状态</h2>
-      <p>当前网络：<strong>${describeNetwork('testnet')}</strong></p>
-      <p>钱包功能开发中，由无人值守共识循环逐步交付。</p>
-    </section>
-  `
-}
+const client = createMempoolTestnetClient()
 
 if (typeof document !== 'undefined') {
-  render()
+  mountWalletApp(document.getElementById('main'), {
+    keys,
+    storage,
+    client,
+    tx,
+    QRCode,
+  })
 }
