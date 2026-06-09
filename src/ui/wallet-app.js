@@ -257,7 +257,7 @@ async function refreshWallet(state, deps) {
 function bindForm(root, selector, handler) {
   root.querySelector(selector)?.addEventListener('submit', (event) => {
     event.preventDefault()
-    handler(new FormData(event.currentTarget))
+    return handler(new FormData(event.currentTarget))
   })
 }
 
@@ -428,7 +428,7 @@ export function mountWalletApp(root, deps) {
     bindForm(root, '#send-form', sendTransaction)
 
     root.querySelector('[data-action="refresh"]')?.addEventListener('click', () => {
-      refreshWallet(state, renderDeps)
+      return refreshWallet(state, renderDeps)
     })
     root.querySelector('[data-action="lock"]')?.addEventListener('click', lockWallet)
     root.querySelector('[data-action="clear"]')?.addEventListener('click', clearWallet)
