@@ -68,8 +68,54 @@ describe('encrypted wallet storage', () => {
     await expect(loadWallet(password, storage)).resolves.toBe(mnemonic)
   })
 
+  it('saves, loads, and clears encrypted wallets through global localStorage', async () => {
+    const originalLocalStorage = globalThis.localStorage
+    const storage = createStorage()
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    })
+
+    try {
+      const envelope = await saveWallet(mnemonic, password)
+      const storedWallet = storage.getItem('huo.wallet.v1')
+
+      expect(storedWallet).not.toContain(mnemonic)
+      expect(JSON.parse(storedWallet)).toEqual(envelope)
+      await expect(loadWallet(password)).resolves.toBe(mnemonic)
+
+      clearWallet()
+
+      expect(storage.getItem('huo.wallet.v1')).toBeNull()
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        value: originalLocalStorage,
+      })
+    }
+  })
+
   it('returns null when no wallet is saved', async () => {
     await expect(loadWallet(password, createStorage())).resolves.toBeNull()
+  })
+
+  it('rejects public storage calls when wallet storage is unavailable', async () => {
+    const originalLocalStorage = globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: undefined,
+    })
+
+    try {
+      await expect(saveWallet(mnemonic, password)).rejects.toThrow('Wallet storage is not available')
+      await expect(loadWallet(password)).rejects.toThrow('Wallet storage is not available')
+      expect(() => clearWallet()).toThrow('Wallet storage is not available')
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        value: originalLocalStorage,
+      })
+    }
   })
 
   it('rejects malformed stored wallet data', async () => {
