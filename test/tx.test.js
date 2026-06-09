@@ -25,6 +25,17 @@ const UTXOS = [
   },
 ]
 
+function buildTestTx(overrides = {}) {
+  return buildAndSignTx({
+    mnemonic: FIXED_MNEMONIC,
+    toAddress: RECIPIENT_ADDRESS,
+    amountSats: 50_000,
+    utxos: UTXOS,
+    feeRate: 1,
+    ...overrides,
+  })
+}
+
 function parseTx(result) {
   return bitcoin.Transaction.fromHex(result.rawTxHex)
 }
@@ -42,11 +53,8 @@ function outputAddress(tx, index) {
 
 describe('testnet transaction builder', () => {
   it('builds and signs a deterministic P2WPKH transaction', () => {
-    const result = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const result = buildTestTx({
       amountSats: 50_000,
-      utxos: UTXOS,
       feeRate: 2,
     })
     const tx = parseTx(result)
@@ -66,11 +74,8 @@ describe('testnet transaction builder', () => {
   })
 
   it('selects inputs in caller-provided order until the spend is funded', () => {
-    const result = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const result = buildTestTx({
       amountSats: 145_000,
-      utxos: UTXOS,
       feeRate: 1,
     })
     const tx = parseTx(result)
@@ -89,18 +94,12 @@ describe('testnet transaction builder', () => {
   })
 
   it('raises fee when feeRate increases', () => {
-    const lowFee = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const lowFee = buildTestTx({
       amountSats: 50_000,
-      utxos: UTXOS,
       feeRate: 1,
     })
-    const highFee = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const highFee = buildTestTx({
       amountSats: 50_000,
-      utxos: UTXOS,
       feeRate: 5,
     })
 
@@ -111,11 +110,8 @@ describe('testnet transaction builder', () => {
   })
 
   it('folds dust-sized change into the transaction fee', () => {
-    const result = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const result = buildTestTx({
       amountSats: 69_750,
-      utxos: UTXOS,
       feeRate: 1,
     })
     const tx = parseTx(result)
@@ -128,24 +124,91 @@ describe('testnet transaction builder', () => {
   })
 
   it('rejects insufficient funds without exposing wallet secrets', () => {
-    expect(() =>
-      buildAndSignTx({
-        mnemonic: FIXED_MNEMONIC,
-        toAddress: RECIPIENT_ADDRESS,
-        amountSats: 500_000,
-        utxos: UTXOS,
-        feeRate: 1,
-      }),
-    ).toThrow('Insufficient funds')
+    expect(() => buildTestTx({ amountSats: 500_000 })).toThrow(
+      'Insufficient funds',
+    )
+  })
+
+  it('rejects invalid spend amounts before transaction construction', () => {
+    const invalidAmounts = [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]
+
+    for (const amountSats of invalidAmounts) {
+      expect(() => buildTestTx({ amountSats })).toThrow(
+        'amountSats must be a positive integer',
+      )
+    }
+  })
+
+  it('rejects invalid fee rates before transaction construction', () => {
+    const invalidFeeRates = [0, -1, Number.NaN, Number.POSITIVE_INFINITY]
+
+    for (const feeRate of invalidFeeRates) {
+      expect(() => buildTestTx({ feeRate })).toThrow(
+        'feeRate must be a positive number',
+      )
+    }
+  })
+
+  it('rejects non-testnet and malformed recipient addresses', () => {
+    const invalidAddresses = [
+      'bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej',
+      'not-a-bitcoin-address',
+    ]
+
+    for (const toAddress of invalidAddresses) {
+      expect(() => buildTestTx({ toAddress })).toThrow(
+        'Recipient address must be a valid testnet address',
+      )
+    }
+  })
+
+  it('rejects malformed UTXO inputs before signing', () => {
+    const invalidUtxos = [
+      {
+        utxos: 'not-an-array',
+        message: 'utxos must be an array',
+      },
+      {
+        utxos: [null],
+        message: 'utxos[0] must be an object',
+      },
+      {
+        utxos: [{ ...UTXOS[0], txid: 'not-hex' }],
+        message: 'utxos[0].txid must be a 64-character hex string',
+      },
+      {
+        utxos: [{ ...UTXOS[0], vout: -1 }],
+        message: 'utxos[0].vout must be a non-negative integer',
+      },
+      {
+        utxos: [{ ...UTXOS[0], value: 0 }],
+        message: 'utxos[0].value must be a positive integer',
+      },
+    ]
+
+    for (const { utxos, message } of invalidUtxos) {
+      expect(() => buildTestTx({ utxos })).toThrow(message)
+    }
+  })
+
+  it('normalizes uppercase UTXO txids before signing', () => {
+    const uppercaseUtxo = { ...UTXOS[0], txid: UTXOS[0].txid.toUpperCase() }
+    const result = buildTestTx({
+      amountSats: 50_000,
+      utxos: [uppercaseUtxo, UTXOS[1], UTXOS[2]],
+      feeRate: 1,
+    })
+    const tx = parseTx(result)
+
+    expect(Buffer.from(tx.ins[0].hash).reverse().toString('hex')).toBe(
+      UTXOS[0].txid,
+    )
   })
 
   it('does not leak mnemonic, WIF, or private-key material in errors and results', () => {
     const account = mnemonicToAccount(FIXED_MNEMONIC)
-    const result = buildAndSignTx({
-      mnemonic: FIXED_MNEMONIC,
-      toAddress: RECIPIENT_ADDRESS,
+    const result = buildTestTx({
       amountSats: 50_000,
-      utxos: UTXOS,
       feeRate: 1,
     })
     const serializedResult = JSON.stringify(result)
@@ -154,13 +217,7 @@ describe('testnet transaction builder', () => {
     expect(serializedResult).not.toContain(account.wif)
 
     try {
-      buildAndSignTx({
-        mnemonic: FIXED_MNEMONIC,
-        toAddress: RECIPIENT_ADDRESS,
-        amountSats: 500_000,
-        utxos: UTXOS,
-        feeRate: 1,
-      })
+      buildTestTx({ amountSats: 500_000 })
     } catch (error) {
       expect(error.message).not.toContain(FIXED_MNEMONIC)
       expect(error.message).not.toContain(account.wif)
