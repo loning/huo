@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.refactor-loop/
+.worktrees/
+*.log
+.DS_Store
